@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httprate"
 
 	"github.com/sym191/todolist-server/internal/auth"
 	"github.com/sym191/todolist-server/internal/config"
@@ -57,6 +58,7 @@ func New(cfg config.Config, backend Backend, authService *auth.Service, logger *
 	router.Get("/health/ready", api.ready)
 	router.Route("/api/v1", func(router chi.Router) {
 		router.Route("/auth", func(router chi.Router) {
+			router.Use(httprate.LimitByIP(10, time.Minute))
 			router.Post("/register", api.register)
 			router.Post("/login", api.login)
 			router.Post("/refresh", api.refresh)
