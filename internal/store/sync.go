@@ -125,6 +125,22 @@ func applyProject(ctx context.Context, tx pgx.Tx, userID string, mutation syncmo
 		if errors.Is(err, pgx.ErrNoRows) {
 			return tombstone(mutation.EntityID)
 		}
+		if err == nil {
+			if _, cascadeErr := tx.Exec(ctx, `
+				UPDATE tasks
+				SET deleted_at = COALESCE(deleted_at, now()), updated_at = now(), version = version + 1
+				WHERE user_id = $1 AND project_id = $2 AND deleted_at IS NULL
+			`, userID, mutation.EntityID); cascadeErr != nil {
+				return nil, cascadeErr
+			}
+			if _, cascadeErr := tx.Exec(ctx, `
+				UPDATE board_columns
+				SET deleted_at = COALESCE(deleted_at, now()), updated_at = now(), version = version + 1
+				WHERE user_id = $1 AND project_id = $2 AND deleted_at IS NULL
+			`, userID, mutation.EntityID); cascadeErr != nil {
+				return nil, cascadeErr
+			}
+		}
 		return marshalCanonical(project, err)
 	}
 	var input syncmodel.Project
