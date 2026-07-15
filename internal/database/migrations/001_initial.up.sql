@@ -18,15 +18,18 @@ CREATE TABLE devices (
 );
 
 CREATE INDEX devices_user_id_idx ON devices (user_id);
+ALTER TABLE devices ADD CONSTRAINT devices_user_id_id_unique UNIQUE (user_id, id);
 
 CREATE TABLE refresh_tokens (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    device_id UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    device_id UUID NOT NULL,
     token_hash BYTEA NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    revoked_at TIMESTAMPTZ
+    revoked_at TIMESTAMPTZ,
+    CONSTRAINT refresh_tokens_device_fk FOREIGN KEY (user_id, device_id)
+        REFERENCES devices(user_id, id) ON DELETE CASCADE
 );
 
 CREATE INDEX refresh_tokens_active_idx
