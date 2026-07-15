@@ -1,0 +1,8 @@
+DROP TABLE IF EXISTS processed_mutations;
+DROP TABLE IF EXISTS changes;
+DROP TABLE IF EXISTS board_columns;
+DROP TABLE IF EXISTS tasks;
+DROP TABLE IF EXISTS projects;
+DROP TABLE IF EXISTS refresh_tokens;
+DROP TABLE IF EXISTS devices;
+DROP TABLE IF EXISTS users;

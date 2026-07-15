@@ -1,0 +1,440 @@
+openapi: 3.1.0
+info:
+  title: TodoList API
+  version: 1.0.0
+  description: Authentication and local-first synchronization API for todolist-client.
+servers:
+  - url: http://localhost:8080/api/v1
+paths:
+  /auth/register:
+    post:
+      operationId: register
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CredentialsRequest'
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /auth/login:
+    post:
+      operationId: login
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CredentialsRequest'
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+  /auth/refresh:
+    post:
+      operationId: refreshSession
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Tokens rotated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '204':
+          description: Session revoked
+  /me:
+    get:
+      operationId: getCurrentUser
+      tags: [Authentication]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Error'
+  /sync/push:
+    post:
+      operationId: pushMutations
+      tags: [Synchronization]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mutations]
+              properties:
+                mutations:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items:
+                    $ref: '#/components/schemas/Mutation'
+      responses:
+        '200':
+          description: Mutations applied in request order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MutationResult'
+        '401':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /sync/pull:
+    get:
+      operationId: pullChanges
+      tags: [Synchronization]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 200
+      responses:
+        '200':
+          description: Ordered changes after the supplied cursor
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [changes, cursor, hasMore]
+                properties:
+                  changes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Change'
+                  cursor:
+                    type: integer
+                    format: int64
+                  hasMore:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Error'
+  /sync/snapshot:
+    get:
+      operationId: getSnapshot
+      tags: [Synchronization]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current non-deleted entities and current revision cursor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Snapshot'
+        '401':
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Error:
+      description: Request error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    CredentialsRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+        deviceId:
+          type: string
+          format: uuid
+        deviceName:
+          type: string
+          maxLength: 200
+    RefreshRequest:
+      type: object
+      additionalProperties: false
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+    AuthResponse:
+      type: object
+      required: [user, deviceId, accessToken, refreshToken, expiresAt]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        deviceId:
+          type: string
+          format: uuid
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+    User:
+      type: object
+      required: [id, email, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        createdAt:
+          type: string
+          format: date-time
+    Mutation:
+      type: object
+      additionalProperties: false
+      required: [id, entityType, entityId, operationType, payload]
+      properties:
+        id:
+          type: string
+          description: Stable idempotency key generated by the client.
+        entityType:
+          type: string
+          enum: [project, task, board_column]
+        entityId:
+          type: string
+        operationType:
+          type: string
+          description: Domain operation name. Names containing delete create tombstones.
+        baseVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        payload:
+          oneOf:
+            - $ref: '#/components/schemas/Project'
+            - $ref: '#/components/schemas/Task'
+            - $ref: '#/components/schemas/BoardColumn'
+            - $ref: '#/components/schemas/Tombstone'
+    MutationResult:
+      type: object
+      required: [id, status, revision, canonical]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [applied, already_applied]
+        revision:
+          type: integer
+          format: int64
+        canonical:
+          type: object
+          additionalProperties: true
+    Change:
+      type: object
+      required: [revision, entityType, entityId, operationType, payload, changedAt]
+      properties:
+        revision:
+          type: integer
+          format: int64
+        entityType:
+          type: string
+          enum: [project, task, board_column]
+        entityId:
+          type: string
+        operationType:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        changedAt:
+          type: string
+          format: date-time
+    Snapshot:
+      type: object
+      required: [cursor, projects, tasks, boardColumns]
+      properties:
+        cursor:
+          type: integer
+          format: int64
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        boardColumns:
+          type: array
+          items:
+            $ref: '#/components/schemas/BoardColumn'
+    Project:
+      type: object
+      required: [id, name, description, colorValue, type, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+        colorValue:
+          type: integer
+          format: int64
+        type:
+          type: string
+        version:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: [string, 'null']
+          format: date-time
+    Task:
+      type: object
+      required:
+        - id
+        - handle
+        - projectId
+        - title
+        - summary
+        - description
+        - status
+        - boardStatusId
+        - urgency
+        - scheduledDate
+        - hasTimeRange
+        - isFavorite
+        - progress
+        - boardOrder
+        - createdAt
+        - updatedAt
+      properties:
+        id: {type: string}
+        handle: {type: string}
+        projectId: {type: string}
+        title: {type: string}
+        summary: {type: string}
+        description: {type: string}
+        status: {type: string}
+        boardStatusId: {type: string}
+        urgency: {type: string}
+        scheduledDate: {type: string, format: date-time}
+        startTime: {type: [string, 'null'], format: date-time}
+        endTime: {type: [string, 'null'], format: date-time}
+        hasTimeRange: {type: boolean}
+        isFavorite: {type: boolean}
+        progress: {type: integer, minimum: 0, maximum: 100}
+        estimatedMinutes: {type: [integer, 'null'], minimum: 0}
+        actualMinutes: {type: [integer, 'null'], minimum: 0}
+        boardOrder: {type: string}
+        version: {type: integer, format: int64}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        completedAt: {type: [string, 'null'], format: date-time}
+        deletedAt: {type: [string, 'null'], format: date-time}
+    BoardColumn:
+      type: object
+      required: [id, projectId, label, sortOrder, createdAt, updatedAt]
+      properties:
+        id: {type: string}
+        projectId: {type: string}
+        label: {type: string, maxLength: 100}
+        linkedStatus: {type: [string, 'null']}
+        sortOrder: {type: integer}
+        version: {type: integer, format: int64}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        deletedAt: {type: [string, 'null'], format: date-time}
+    Tombstone:
+      type: object
+      required: [id, deletedAt]
+      properties:
+        id: {type: string}
+        projectId:
+          type: string
+          description: Required when deleting a board column.
+        deletedAt: {type: string, format: date-time}
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}
